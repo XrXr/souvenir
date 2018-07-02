@@ -105,6 +105,14 @@ struct XSetWindowAttributes {
 	cursor u64
 }
 
+struct XColor {
+	pixel u64
+	red u16
+	green u16
+	blue u16
+	flags u8
+	pad u8
+}
 
 XOpenDisplay :: foreign proc (name *u8) -> *XDisplay
 
@@ -128,6 +136,8 @@ XCloseDisplay :: foreign proc (display *XDisplay) -> s32
 
 XSetInputFocus :: foreign proc (display *XDisplay, window u64, revert_to s32, time u64) -> s32
 
+XAllocColor :: foreign proc (display *XDisplay, colormap u64, screen_in_out *XColor) -> s32
+
 main :: proc () {
 	var d *XDisplay
 	var w u64
@@ -138,8 +148,7 @@ main :: proc () {
 
   	d = XOpenDisplay(nil)
   	if !d {
-  		puts("Can't open display\n")
-  		exit(1)
+  		die("Can't open display")
   	}
 
   	s = d.default_screen
@@ -147,15 +156,25 @@ main :: proc () {
   	rootWindow := screen.root
 
   	gc := screen.default_gc
+  	defaultColorMap := screen.cmap
+
+  	var backgroundColor XColor
+  	backgroundColor.red = 0
+  	backgroundColor.green = 21845
+  	backgroundColor.blue = 30583
+  	rc := XAllocColor(d, defaultColorMap, &backgroundColor)
+  	if rc == 0 {
+  		die("Can't allocate color")
+  	}
 
   	var swa XSetWindowAttributes
   	CopyFromParent := 0
   	swa.override_redirect = 1
-  	// swa.background_pixel
+  	swa.background_pixel = backgroundColor.pixel
   	// ExposureMask | KeyPressMask | VisibilityChangeMask
   	swa.event_mask = 98305
-  	// CWOverrideRedirect | CWEventMask
-  	value_mask := 2560
+  	// CWOverrideRedirect | CWBackPixel | CWEventMask
+  	value_mask := 2562
     w = XCreateWindow(d, rootWindow, 100, 100, 500, 500, 0, CopyFromParent, CopyFromParent, nil, value_mask, &swa)
     XSelectInput(d, w, 32769)
   	XMapWindow(d, w)
@@ -178,4 +197,11 @@ main :: proc () {
   	}
 
    XCloseDisplay(d)
+}
+
+
+die :: proc (info string) {
+	puts(info)
+	puts("\n")
+	exit(1)
 }
