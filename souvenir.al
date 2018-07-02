@@ -12,7 +12,7 @@ struct XDisplay {
 	private4 u64
 	private5 u64
 	private6 s32
-	resource_alloc *void
+kk	resource_alloc *void
 	byte_order s32
 	bitmap_unit s32
 	bitmap_pad s32
@@ -126,6 +126,8 @@ XSelectInput :: foreign proc (display *XDisplay, w u64, event_mask s64) -> int
 
 XCloseDisplay :: foreign proc (display *XDisplay) -> s32
 
+XSetInputFocus :: foreign proc (display *XDisplay, window u64, revert_to s32, time u64) -> s32
+
 main :: proc () {
 	var d *XDisplay
 	var w u64
@@ -157,6 +159,10 @@ main :: proc () {
     w = XCreateWindow(d, rootWindow, 100, 100, 500, 500, 0, CopyFromParent, CopyFromParent, nil, value_mask, &swa)
     XSelectInput(d, w, 32769)
   	XMapWindow(d, w)
+
+  	RevertToParent := 2
+  	CurrentTime := 0
+  	XSetInputFocus(d, w, RevertToParent, CurrentTime)
 
   	Expose := 12
   	KeyPress := 2
