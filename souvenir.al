@@ -12,7 +12,7 @@ struct XDisplay {
 	private4 u64
 	private5 u64
 	private6 s32
-kk	resource_alloc *void
+	resource_alloc *void
 	byte_order s32
 	bitmap_unit s32
 	bitmap_pad s32
@@ -138,11 +138,108 @@ XSetInputFocus :: foreign proc (display *XDisplay, window u64, revert_to s32, ti
 
 XAllocColor :: foreign proc (display *XDisplay, colormap u64, screen_in_out *XColor) -> s32
 
+struct dirent {
+	d_ino u64
+	d_off s64
+	d_reclen u16
+	d_type u8
+	d_name [256]u8
+}
+
+
+opendir :: foreign proc (name *u8) -> *void
+closedir :: foreign proc (dir *void) -> s32
+readdir :: foreign proc (dirp *void) -> *dirent
+strlen :: foreign proc (str *u8) -> u64
+getenv :: foreign proc (name *u8) -> *u8
+memcpy :: foreign proc (dest *void, source *void, num u64) -> *u8
+malloc :: foreign proc (size u64) -> *void
+perror :: foreign proc (s *u8)
+free :: foreign proc (buffer *void)
+
+struct executable {
+	parentDirectory string
+	fileName string
+}
+
 main :: proc () {
 	var d *XDisplay
 	var w u64
 	var e XEvent
 	msg := "he's done it"
+
+	pathEnv := getenv("PATH".data)
+	if !pathEnv {
+		die("environmental variable PATH not set")
+	}
+
+	var paths [100]string
+	pathCount := 0
+	pathBufferSize := 1000
+	pathBuffer := malloc(pathBufferSize)
+	var pathBufferChar *u8
+	pathBufferChar = pathBuffer
+	pathBufferOffset := 0
+	var i int
+	start := 0
+	writes(pathEnv, strlen(pathEnv))
+	puts("\n")
+	for true {
+		thisChar := @(pathEnv+i)
+		// 58 == ':'
+		if (thisChar == 58 || thisChar == 0) && i - start > 0 {
+			len := i - start
+			if pathBufferOffset + 8 + len + 1 >= pathBufferSize {
+				break
+			}
+			newString := pathBufferChar + pathBufferOffset
+			print_int(int(newString))
+			newStringSize := makeString(newString, pathEnv + start, len)
+			@(newString + newStringSize) = 0
+			pathBufferOffset += newStringSize + 1
+
+			paths[pathCount] = string(newString)
+			pathCount += 1
+			// TODO paths.length
+			if pathCount >= 100 {
+				break
+			}
+			if thisChar == 0 {
+				break
+			}
+			start = i + 1
+		}
+		i += 1
+	}
+	executables := malloc(5000 * 16)
+	exeCount := 0
+	for i := 0..pathCount-1 {
+		dirPath := paths[i]
+		puts(dirPath)
+		puts(":\n")
+		dir := opendir(dirPath.data)
+		if !dir {
+			perror("could not open dir".data)
+			continue
+		}
+		for true {
+			entry := readdir(dir)
+			if !entry {
+				break
+			}
+			DT_REG := 8
+			DT_LNK := 10
+			if entry.d_type == DT_REG || entry.d_type == DT_LNK {
+				fileName := entry.d_name
+				fileNamePtr := &fileName
+				writes(fileNamePtr, strlen(fileNamePtr))
+				puts("\n")
+			}
+		}
+		closedir(dir)
+		puts("\n\n")
+	}
+	free(pathBuffer)
 
 	var s s32
 
@@ -189,7 +286,7 @@ main :: proc () {
 		XNextEvent(d, &e)
 		if e.type == Expose {
         	XFillRectangle(d, w, gc, 20, 20, 10, 10)
-        	XDrawString(d, w, gc, 10, 50, msg.data, msg.length)
+        	XDrawString(d, w, gc, 100, 50, msg.data, msg.length)
 		}
 		if e.type == KeyPress {
 			break
@@ -199,6 +296,20 @@ main :: proc () {
    XCloseDisplay(d)
 }
 
+
+makeString :: proc (dest *void, data *u8, length int) -> int {
+	var lenPtr *int
+	var destChar *u8
+	lenPtr = dest
+	destChar = dest
+
+	print_int(int(lenPtr))
+	print_int(int(destChar))
+
+	@lenPtr = length
+	memcpy(destChar + 8, data, length)
+	return 8 + length
+}
 
 die :: proc (info string) {
 	puts(info)

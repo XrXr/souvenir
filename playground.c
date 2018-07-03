@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <dirent.h>
 
 // Window myCreateWindow(
 //     Display*        display,
@@ -31,6 +32,8 @@ int main() {
     printf("CWOverrideRedirect | CWBackPixel | CWEventMask = %lu\n", CWOverrideRedirect | CWBackPixel | CWEventMask);
     printf("CWOverrideRedirect | CWEventMask = %lu\n", CWOverrideRedirect | CWEventMask);
     printf("CopyFromParent = %lu\n", CopyFromParent);
+    printf("DT_REG  = %d\n", DT_REG);
+    printf("DT_LNK  = %d\n", DT_LNK);
     printf("sizeof(XSetWindowAttributes) = %lu\n", sizeof(XSetWindowAttributes));
     printf("offsetof(XSetWindowAttributes, override_redirect) = %lu\n", offsetof(XSetWindowAttributes, override_redirect));
     printf("offsetof(XSetWindowAttributes, event_mask) = %lu\n", offsetof(XSetWindowAttributes, event_mask));
