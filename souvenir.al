@@ -193,7 +193,6 @@ main :: proc () {
 				break
 			}
 			newString := pathBufferChar + pathBufferOffset
-			print_int(int(newString))
 			newStringSize := makeString(newString, pathEnv + start, len)
 			@(newString + newStringSize) = 0
 			pathBufferOffset += newStringSize + 1
@@ -211,12 +210,18 @@ main :: proc () {
 		}
 		i += 1
 	}
-	executables := malloc(5000 * 16)
+	exeBufferSize := 5000
+	var executableList [5000]executable
+	// TODO hack before we can do executableList[3].something = 100
+	var exeListPtr *executable
+	exeListPtr = &executableList
 	exeCount := 0
+	exeFileNamesBufferSize := 5000 * 256
+	var exeFileNames *u8
+	exeFileNames = malloc(exeFileNamesBufferSize)
+	exeFileNamesOffset := 0
 	for i := 0..pathCount-1 {
 		dirPath := paths[i]
-		puts(dirPath)
-		puts(":\n")
 		dir := opendir(dirPath.data)
 		if !dir {
 			perror("could not open dir".data)
@@ -232,14 +237,35 @@ main :: proc () {
 			if entry.d_type == DT_REG || entry.d_type == DT_LNK {
 				fileName := entry.d_name
 				fileNamePtr := &fileName
-				writes(fileNamePtr, strlen(fileNamePtr))
-				puts("\n")
+				fileNameLen := strlen(fileNamePtr)
+				if exeFileNamesOffset + fileNameLen >= exeFileNamesBufferSize {
+					break
+				}
+				newString := exeFileNames + exeFileNamesOffset
+				stringSize := makeString(newString, fileNamePtr, fileNameLen)
+				exeFileNamesOffset += stringSize
+
+				(exeListPtr+exeCount).parentDirectory = dirPath
+				(exeListPtr+exeCount).fileName = string(newString)
+				exeCount += 1
+				if exeCount >= exeBufferSize {
+					break
+				}
 			}
 		}
 		closedir(dir)
-		puts("\n\n")
 	}
+
+	for i := 1..exeCount-1 {
+		exe := executableList[i]
+		puts(exe.parentDirectory)
+		puts("/")
+		puts(exe.fileName)
+		puts("\n")
+	}
+
 	free(pathBuffer)
+	free(exeFileNames)
 
 	var s s32
 
@@ -298,16 +324,16 @@ main :: proc () {
 
 
 makeString :: proc (dest *void, data *u8, length int) -> int {
+//	print_int(int(dest))
 	var lenPtr *int
 	var destChar *u8
 	lenPtr = dest
 	destChar = dest
 
-	print_int(int(lenPtr))
-	print_int(int(destChar))
-
 	@lenPtr = length
 	memcpy(destChar + 8, data, length)
+//	puts(string(dest))
+//	puts("\n")
 	return 8 + length
 }
 
