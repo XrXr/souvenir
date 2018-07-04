@@ -158,6 +158,9 @@ XAllocColor :: foreign proc (display *XDisplay, colormap u64, screen_in_out *XCo
 
 XClearWindow :: foreign proc (display *XDisplay, window u64) -> s32
 
+XLookupString :: foreign proc (event_struct *XKeyEvent, buffer_return *u8, bytes_buffer s32, keysym_return *void, status_in_out *void) -> s32
+
+
 struct dirent {
 	d_ino u64
 	d_off s64
@@ -189,6 +192,7 @@ struct souvenir {
 	exeList *[5000]executable
 	selected int
 	filter string
+	maxFilterLength int
 }
 
 main :: proc () {
@@ -339,6 +343,7 @@ main :: proc () {
 	app.exeCount = exeCount
 	app.normalTextGc = gc
 	app.filter = string(&filterBuffer)
+	app.maxFilterLength = 5000 - 8
 
 	app.filter.length = 3
 	@(app.filter.data) = 97
@@ -377,6 +382,19 @@ mainLoop :: proc (app *souvenir) {
 			if keyEvent.keycode == 9 {
 				break
 			}
+			if keyEvent.keycode == 22 {
+				if app.filter.length > 0 {
+					app.filter.length -= 1
+					//app.selected = 0
+					draw(app)
+				}
+			}
+			if keyEvent.keycode >= 32 && keyEvent.keycode <= 126 && app.filter.length < app.maxFilterLength {
+				diff := XLookupString(keyEvent, app.filter.data+app.filter.length, 1, nil, nil)
+				app.filter.length += diff
+				//app.selected = 0
+				draw(app)
+			}
 		}
   	}
 }
@@ -388,8 +406,9 @@ draw :: proc (app *souvenir) {
 	stringBufferPointer = &stringBuffer
 
 	XClearWindow(app.display, app.window)
-	y := 20
+	y := 70
 	x := 50
+	XDrawString(app.display, app.window, app.normalTextGc, x, 20, app.filter.data, app.filter.length)
 	entryNumber := 0
 	for i := 0..app.exeCount-1 {
 		exe := app.exeList[i]
@@ -425,7 +444,7 @@ draw :: proc (app *souvenir) {
 			XDrawString(app.display, app.window, app.normalTextGc, 200, y, stringBufferPointer, exe.parentDirectory.length + exe.fileName.length + 1)
 		}
 		entryNumber += 1
-		y += 50
+		y += 30
 		if y >= 500 {
 			break
 		}
