@@ -76,6 +76,24 @@ struct XEvent {
 	fill [188]u8
 }
 
+struct XKeyEvent {
+	type s32
+	serial u64
+	send_event s32
+	display *XDisplay
+	window u64
+	root u64
+	subwindow u64
+	time u64
+	x s32
+	y s32
+	x_root s32
+	y_root s32
+	state u32
+	keycode u32
+	same_screen s32
+}
+
 struct Visual {
 	ext_data *void
 	visualid u64
@@ -138,6 +156,8 @@ XSetInputFocus :: foreign proc (display *XDisplay, window u64, revert_to s32, ti
 
 XAllocColor :: foreign proc (display *XDisplay, colormap u64, screen_in_out *XColor) -> s32
 
+XClearWindow :: foreign proc (display *XDisplay, window u64) -> s32
+
 struct dirent {
 	d_ino u64
 	d_off s64
@@ -145,7 +165,6 @@ struct dirent {
 	d_type u8
 	d_name [256]u8
 }
-
 
 opendir :: foreign proc (name *u8) -> *void
 closedir :: foreign proc (dir *void) -> s32
@@ -162,11 +181,19 @@ struct executable {
 	fileName string
 }
 
+struct souvenir {
+	display *XDisplay
+	window u64
+	normalTextGc *void
+	exeCount int
+	exeList *[5000]executable
+	selected int
+	filter string
+}
+
 main :: proc () {
 	var d *XDisplay
 	var w u64
-	var e XEvent
-	msg := "he's done it"
 
 	pathEnv := getenv("PATH".data)
 	if !pathEnv {
@@ -264,9 +291,6 @@ main :: proc () {
 		puts("\n")
 	}
 
-	free(pathBuffer)
-	free(exeFileNames)
-
 	var s s32
 
   	d = XOpenDisplay(nil)
@@ -306,20 +330,106 @@ main :: proc () {
   	CurrentTime := 0
   	XSetInputFocus(d, w, RevertToParent, CurrentTime)
 
+
+  	var filterBuffer [5000]u8
+	var app souvenir
+	app.display = d
+	app.window = w
+	app.exeList = &executableList
+	app.exeCount = exeCount
+	app.normalTextGc = gc
+	app.filter = string(&filterBuffer)
+
+	app.filter.length = 3
+	@(app.filter.data) = 97
+	@(app.filter.data + 1) = 100
+	@(app.filter.data + 2) = 100
+
+	mainLoop(&app)
+
+	free(pathBuffer)
+	free(exeFileNames)
+	XCloseDisplay(d)
+}
+
+mainLoop :: proc (app *souvenir) {
+	var e XEvent
   	Expose := 12
   	KeyPress := 2
   	for true {
-		XNextEvent(d, &e)
+		XNextEvent(app.display, &e)
 		if e.type == Expose {
-        	XFillRectangle(d, w, gc, 20, 20, 10, 10)
-        	XDrawString(d, w, gc, 100, 50, msg.data, msg.length)
+			draw(app)
 		}
 		if e.type == KeyPress {
-			break
+			var keyEvent *XKeyEvent
+			var castHack *void
+			castHack = &e
+			keyEvent = castHack
+			if keyEvent.keycode == 111 {
+				app.selected -= 1
+				draw(app)
+			}
+			if keyEvent.keycode == 116 {
+				app.selected += 1
+				draw(app)
+			}
+			if keyEvent.keycode == 9 {
+				break
+			}
 		}
   	}
+}
 
-   XCloseDisplay(d)
+draw :: proc (app *souvenir) {
+	stringBufferSize := 5000
+	var stringBuffer [5000]u8
+	var stringBufferPointer *u8
+	stringBufferPointer = &stringBuffer
+
+	XClearWindow(app.display, app.window)
+	y := 20
+	x := 50
+	entryNumber := 0
+	for i := 0..app.exeCount-1 {
+		exe := app.exeList[i]
+		if app.filter.length > 0 {
+			match := false
+			for i := 0..exe.fileName.length-app.filter.length {
+				same := true
+				for j := 0..app.filter.length-1 {
+					if @(app.filter.data + j) != @(exe.fileName.data + i + j) {
+						same = false
+					}
+				}
+				if same {
+					match = true
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+		if exe.parentDirectory.length + exe.fileName.length > stringBufferSize {
+			die("path too large")
+		}
+		memcpy(stringBufferPointer, exe.fileName.data, exe.fileName.length)
+		XDrawString(app.display, app.window, app.normalTextGc, x, y, stringBufferPointer, exe.fileName.length)
+
+		if entryNumber == app.selected {
+			memcpy(stringBufferPointer, exe.parentDirectory.data, exe.parentDirectory.length)
+			// 47 is '/'
+			@(stringBufferPointer + exe.parentDirectory.length) = 47
+			memcpy(stringBufferPointer + exe.parentDirectory.length + 1, exe.fileName.data, exe.fileName.length)
+			XDrawString(app.display, app.window, app.normalTextGc, 200, y, stringBufferPointer, exe.parentDirectory.length + exe.fileName.length + 1)
+		}
+		entryNumber += 1
+		y += 50
+		if y >= 500 {
+			break
+		}
+	}
 }
 
 
