@@ -160,7 +160,6 @@ XClearWindow :: foreign proc (display *XDisplay, window u64) -> s32
 
 XLookupString :: foreign proc (event_struct *XKeyEvent, buffer_return *u8, bytes_buffer s32, keysym_return *void, status_in_out *void) -> s32
 
-
 struct dirent {
 	d_ino u64
 	d_off s64
@@ -178,6 +177,9 @@ memcpy :: foreign proc (dest *void, source *void, num u64) -> *u8
 malloc :: foreign proc (size u64) -> *void
 perror :: foreign proc (s *u8)
 free :: foreign proc (buffer *void)
+posix_spawn :: foreign proc (pid *void, path *u8, file_actions *void, attrp *void, argv **u8, envp **u8) -> s32
+
+getEnviron :: foreign proc () -> **u8
 
 struct executable {
 	parentDirectory string
@@ -190,6 +192,7 @@ struct souvenir {
 	normalTextGc *void
 	exeCount int
 	exeList *[5000]executable
+	selectedPath *[5000]u8
 	selected int
 	filter string
 	maxFilterLength int
@@ -287,14 +290,6 @@ main :: proc () {
 		closedir(dir)
 	}
 
-	for i := 1..exeCount-1 {
-		exe := executableList[i]
-		puts(exe.parentDirectory)
-		puts("/")
-		puts(exe.fileName)
-		puts("\n")
-	}
-
 	var s s32
 
   	d = XOpenDisplay(nil)
@@ -336,6 +331,7 @@ main :: proc () {
 
 
   	var filterBuffer [5000]u8
+  	var selectedPathBuffer [5000]u8
 	var app souvenir
 	app.display = d
 	app.window = w
@@ -344,6 +340,7 @@ main :: proc () {
 	app.normalTextGc = gc
 	app.filter = string(&filterBuffer)
 	app.maxFilterLength = 5000 - 8
+	app.selectedPath = &selectedPathBuffer
 
 	app.filter.length = 3
 	@(app.filter.data) = 97
@@ -366,11 +363,13 @@ mainLoop :: proc (app *souvenir) {
 		if e.type == Expose {
 			draw(app)
 		}
-		if e.type == KeyPress {
+		// compiler bug: KeyPress gets clobbered
+		if e.type == 2 {
 			var keyEvent *XKeyEvent
 			var castHack *void
 			castHack = &e
 			keyEvent = castHack
+
 			if keyEvent.keycode == 111 {
 				app.selected -= 1
 				draw(app)
@@ -389,8 +388,23 @@ mainLoop :: proc (app *souvenir) {
 					draw(app)
 				}
 			}
-			if keyEvent.keycode >= 32 && keyEvent.keycode <= 126 && app.filter.length < app.maxFilterLength {
-				diff := XLookupString(keyEvent, app.filter.data+app.filter.length, 1, nil, nil)
+			// enter
+			if keyEvent.keycode == 36 {
+				var argv [2]*u8
+				argv[0] = app.selectedPath
+				argv[1] = nil
+				env := environ()
+				writes(@env, strlen(@env))
+				puts("\n")
+
+				posix_spawn(nil, app.selectedPath, nil, nil, &argv, env)
+				puts("have a nice trip!\n")
+				break
+			}
+			var keysym u8
+			diff := XLookupString(keyEvent, &keysym, 1, nil, nil)
+			if diff > 0 && keysym >= 32 && keysym <= 126 && app.filter.length < app.maxFilterLength {
+				@(app.filter.data + app.filter.length) = keysym
 				app.filter.length += diff
 				//app.selected = 0
 				draw(app)
@@ -441,7 +455,10 @@ draw :: proc (app *souvenir) {
 			// 47 is '/'
 			@(stringBufferPointer + exe.parentDirectory.length) = 47
 			memcpy(stringBufferPointer + exe.parentDirectory.length + 1, exe.fileName.data, exe.fileName.length)
-			XDrawString(app.display, app.window, app.normalTextGc, 200, y, stringBufferPointer, exe.parentDirectory.length + exe.fileName.length + 1)
+			totalLength := exe.parentDirectory.length + exe.fileName.length + 1
+			XDrawString(app.display, app.window, app.normalTextGc, 200, y, stringBufferPointer, totalLength)
+			memcpy(app.selectedPath, stringBufferPointer, totalLength)
+			app.selectedPath[totalLength] = 0
 		}
 		entryNumber += 1
 		y += 30
