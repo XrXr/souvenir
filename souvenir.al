@@ -1,4 +1,4 @@
-// $GOPATH/bin/alang -c -libc souvenir.al; and gcc -g -no-pie a.o -lX11; ./a.out
+// $GOPATH/bin/alang -c -libc souvenir.al; and gcc -g a.o -lX11; ./a.out
 
 struct XDisplay {
 	ext_data *void
@@ -45,7 +45,6 @@ struct XDisplay {
 	private18 *u8
 	private19 s32
 	xdefaults *u8
-
 }
 
 struct Screen {
@@ -363,8 +362,7 @@ mainLoop :: proc (app *souvenir) {
 		if e.type == Expose {
 			draw(app)
 		}
-		// compiler bug: KeyPress gets clobbered
-		if e.type == 2 {
+		if e.type == KeyPress {
 			var keyEvent *XKeyEvent
 			var castHack *void
 			castHack = &e
@@ -384,7 +382,7 @@ mainLoop :: proc (app *souvenir) {
 			if keyEvent.keycode == 22 {
 				if app.filter.length > 0 {
 					app.filter.length -= 1
-					//app.selected = 0
+					app.selected = 0
 					draw(app)
 				}
 			}
@@ -394,8 +392,6 @@ mainLoop :: proc (app *souvenir) {
 				argv[0] = app.selectedPath
 				argv[1] = nil
 				env := environ()
-				writes(@env, strlen(@env))
-				puts("\n")
 
 				posix_spawn(nil, app.selectedPath, nil, nil, &argv, env)
 				puts("have a nice trip!\n")
@@ -406,7 +402,7 @@ mainLoop :: proc (app *souvenir) {
 			if diff > 0 && keysym >= 32 && keysym <= 126 && app.filter.length < app.maxFilterLength {
 				@(app.filter.data + app.filter.length) = keysym
 				app.filter.length += diff
-				//app.selected = 0
+				app.selected = 0
 				draw(app)
 			}
 		}
