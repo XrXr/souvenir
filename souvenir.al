@@ -1,4 +1,4 @@
-// $GOPATH/bin/alang -c -libc souvenir.al; and gcc -g a.o -lX11; ./a.out
+// eval $GOPATH/bin/alang -c -libc souvenir.al; and gcc -g a.o -lX11 -lXft; and ./a.out
 
 struct XDisplay {
 	ext_data *void
@@ -139,6 +139,34 @@ struct XColor {
 	pad u8
 }
 
+struct XRenderColor {
+	red u16
+	green u16
+	blue u16
+	alph u16
+}
+
+struct XftColor {
+	pixel u64
+	color XRenderColor
+}
+
+struct XGlyphInfo {
+	width u16
+	height u16
+	x s16
+	y s16
+	xOff s16
+	yOff s16
+}
+
+
+struct XftFont{
+}
+
+struct XftDraw {
+}
+
 XOpenDisplay :: foreign proc (name *u8) -> *XDisplay
 
 XCreateWindow :: foreign proc (display *XDisplay, window u64, x s32, y s32, width u32, height u32, border_width u32, depth s32, class u32, visual *Visual, valuemask u64, attributes *XSetWindowAttributes) -> u64
@@ -164,6 +192,16 @@ XClearWindow :: foreign proc (display *XDisplay, window u64) -> s32
 XLookupString :: foreign proc (event_struct *XKeyEvent, buffer_return *u8, bytes_buffer s32, keysym_return *void, status_in_out *void) -> s32
 
 XGetWindowAttributes :: foreign proc (display *XDisplay, window u64, window_attributes_return *XWindowAttributes) -> s32
+
+XftColorAllocName :: foreign proc (display *XDisplay, visual *Visual, cmap u64, colorName *u8, result *XftColor) -> s32
+
+XftFontOpenName :: foreign proc (display *XDisplay, screen s32, name *u8) -> *XftFont
+
+XftDrawCreate :: foreign proc (display *XDisplay, drawable u64, visual *Visual, colormap u64) -> *XftDraw
+
+XftTextExtentsUtf8 :: foreign proc (display *XDisplay, pub *XftFont, string *u8, len s32, extents *XGlyphInfo)
+
+XftDrawStringUtf8 :: foreign proc (draw  *XftDraw, color *XftColor, pub *XftFont, x s32, y s32, string *u8, len s32)
 
 struct dirent {
 	d_ino u64
@@ -194,6 +232,7 @@ struct executable {
 struct souvenir {
 	display *XDisplay
 	window u64
+	windowWidth int
 	normalTextGc *void
 	exeCount int
 	exeList *[5000]executable
@@ -201,6 +240,10 @@ struct souvenir {
 	selected int
 	filter string
 	maxFilterLength int
+	xftWindowDraw *XftDraw
+	font *XftFont
+	selectionColor XftColor
+	textColor XftColor
 }
 
 main :: proc () {
@@ -295,38 +338,53 @@ main :: proc () {
 		closedir(dir)
 	}
 
-	var s s32
+	var app souvenir
 
   	d = XOpenDisplay(nil)
   	if !d {
   		die("Can't open display")
   	}
 
-  	s = d.default_screen
+  	s := d.default_screen
   	screen := d.screens + s
   	rootWindow := screen.root
 
   	gc := screen.default_gc
   	defaultColorMap := screen.cmap
 
-  	var backgroundColor XColor
-  	backgroundColor.red = 0
-  	backgroundColor.green = 21845
-  	backgroundColor.blue = 30583
-  	rc := XAllocColor(d, defaultColorMap, &backgroundColor)
-  	if rc == 0 {
-  		die("Can't allocate color")
-  	}
-
   	var rootWindowAttr XWindowAttributes
   	if XGetWindowAttributes(d, rootWindow, &rootWindowAttr) == 0 {
   		die("Fail to get width of the root window")
+  	}
+  	app.windowWidth = rootWindowAttr.width
+
+  	var xftColor XftColor
+
+  	if XftColorAllocName(d, screen.root_visual, screen.cmap, "#005577".data, &xftColor) == 0 {
+  		die("Can't allocate selection color")
+  	}
+  	app.selectionColor = xftColor
+
+
+  	if XftColorAllocName(d, screen.root_visual, screen.cmap, "#bbbbbb".data, &xftColor) == 0 {
+  		die("Can't allocate text color")
+  	}
+  	app.textColor = xftColor
+
+  	if XftColorAllocName(d, screen.root_visual, screen.cmap, "#222222".data, &xftColor) == 0 {
+  		die("Can't allocate background color")
+  	}
+  	backgroundPixel := xftColor.pixel
+
+  	app.font = XftFontOpenName(d, s, "monospace-12".data)
+  	if !app.font {
+  		die("Can't open font")
   	}
 
   	var swa XSetWindowAttributes
   	CopyFromParent := 0
   	swa.override_redirect = 1
-  	swa.background_pixel = backgroundColor.pixel
+  	swa.background_pixel = backgroundPixel
   	// ExposureMask | KeyPressMask | VisibilityChangeMask
   	swa.event_mask = 98305
   	// CWOverrideRedirect | CWBackPixel | CWEventMask
@@ -335,14 +393,17 @@ main :: proc () {
     XSelectInput(d, w, 32769)
   	XMapWindow(d, w)
 
+  	app.xftWindowDraw = XftDrawCreate(d, w, screen.root_visual, screen.cmap)
+  	if !app.xftWindowDraw {
+  		die("Can't make XftDraw for the window")
+  	}
+
   	RevertToParent := 2
   	CurrentTime := 0
   	XSetInputFocus(d, w, RevertToParent, CurrentTime)
 
-
   	var filterBuffer [5000]u8
   	var selectedPathBuffer [5000]u8
-	var app souvenir
 	app.display = d
 	app.window = w
 	app.exeList = &executableList
@@ -451,8 +512,19 @@ draw :: proc (app *souvenir) {
 		if exe.parentDirectory.length + exe.fileName.length > stringBufferSize {
 			die("path too large")
 		}
-		memcpy(stringBufferPointer, exe.fileName.data, exe.fileName.length)
-		XDrawString(app.display, app.window, app.normalTextGc, x, y, stringBufferPointer, exe.fileName.length)
+
+		var stringMetric XGlyphInfo
+		XftTextExtentsUtf8(app.display, app.font, exe.fileName.data, exe.fileName.length, &stringMetric)
+		nextX := x + stringMetric.width
+		if nextX >= app.windowWidth {
+			break
+		}
+		// space between items
+		nextX += 20
+
+		// compiler bug: can't take address directly in the arguments
+		pTextColor := &app.textColor
+		XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, 200, exe.fileName.data, exe.fileName.length)
 
 		if entryNumber == app.selected {
 			memcpy(stringBufferPointer, exe.parentDirectory.data, exe.parentDirectory.length)
@@ -460,15 +532,12 @@ draw :: proc (app *souvenir) {
 			@(stringBufferPointer + exe.parentDirectory.length) = 47
 			memcpy(stringBufferPointer + exe.parentDirectory.length + 1, exe.fileName.data, exe.fileName.length)
 			totalLength := exe.parentDirectory.length + exe.fileName.length + 1
-			XDrawString(app.display, app.window, app.normalTextGc, 200, y, stringBufferPointer, totalLength)
+			//XDrawString(app.display, app.window, app.normalTextGc, 200, y, stringBufferPointer, totalLength)
 			memcpy(app.selectedPath, stringBufferPointer, totalLength)
 			app.selectedPath[totalLength] = 0
 		}
 		entryNumber += 1
-		y += 30
-		if y >= 500 {
-			break
-		}
+		x = nextX
 	}
 }
 
