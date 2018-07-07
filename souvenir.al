@@ -122,6 +122,14 @@ struct XSetWindowAttributes {
 	cursor u64
 }
 
+struct XWindowAttributes {
+	x s32
+	y s32
+	width s32
+	height s32
+	pad [120]u8
+}
+
 struct XColor {
 	pixel u64
 	red u16
@@ -133,11 +141,7 @@ struct XColor {
 
 XOpenDisplay :: foreign proc (name *u8) -> *XDisplay
 
-XCreateSimpleWindow :: foreign proc (display *XDisplay, window u64, x s32, y s32, width u32, height u32, border_width u32, border u64, background u64) -> u64
-
 XCreateWindow :: foreign proc (display *XDisplay, window u64, x s32, y s32, width u32, height u32, border_width u32, depth s32, class u32, visual *Visual, valuemask u64, attributes *XSetWindowAttributes) -> u64
-
-myCreateWindow :: foreign proc (display *XDisplay, window u64, x s32, y s32, width u32, height u32, border_width u32, depth s32, class u32, visual *Visual, valuemask u64, attributes *XSetWindowAttributes) -> u64
 
 XMapWindow :: foreign proc (display *XDisplay, w u64) -> s32
 
@@ -158,6 +162,8 @@ XAllocColor :: foreign proc (display *XDisplay, colormap u64, screen_in_out *XCo
 XClearWindow :: foreign proc (display *XDisplay, window u64) -> s32
 
 XLookupString :: foreign proc (event_struct *XKeyEvent, buffer_return *u8, bytes_buffer s32, keysym_return *void, status_in_out *void) -> s32
+
+XGetWindowAttributes :: foreign proc (display *XDisplay, window u64, window_attributes_return *XWindowAttributes) -> s32
 
 struct dirent {
 	d_ino u64
@@ -312,6 +318,11 @@ main :: proc () {
   		die("Can't allocate color")
   	}
 
+  	var rootWindowAttr XWindowAttributes
+  	if XGetWindowAttributes(d, rootWindow, &rootWindowAttr) == 0 {
+  		die("Fail to get width of the root window")
+  	}
+
   	var swa XSetWindowAttributes
   	CopyFromParent := 0
   	swa.override_redirect = 1
@@ -320,7 +331,7 @@ main :: proc () {
   	swa.event_mask = 98305
   	// CWOverrideRedirect | CWBackPixel | CWEventMask
   	value_mask := 2562
-    w = XCreateWindow(d, rootWindow, 100, 100, 500, 500, 0, CopyFromParent, CopyFromParent, nil, value_mask, &swa)
+    w = XCreateWindow(d, rootWindow, 0, 100, rootWindowAttr.width, 500, 0, CopyFromParent, CopyFromParent, nil, value_mask, &swa)
     XSelectInput(d, w, 32769)
   	XMapWindow(d, w)
 
@@ -341,10 +352,7 @@ main :: proc () {
 	app.maxFilterLength = 5000 - 8
 	app.selectedPath = &selectedPathBuffer
 
-	app.filter.length = 3
-	@(app.filter.data) = 97
-	@(app.filter.data + 1) = 100
-	@(app.filter.data + 2) = 100
+	app.filter.length = 0
 
 	mainLoop(&app)
 

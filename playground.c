@@ -31,7 +31,6 @@ extern char **environ;
 char **getEnviron() {
     return environ;
 }
-/*
 int main() {
     printf("%s\n", environ[0]);
     printf("ExposureMask | KeyPressMask | VisibilityChangeMask = %lu\n", ExposureMask | KeyPressMask | VisibilityChangeMask);
@@ -43,6 +42,7 @@ int main() {
     printf("sizeof(XSetWindowAttributes) = %lu\n", sizeof(XSetWindowAttributes));
     printf("offsetof(XSetWindowAttributes, override_redirect) = %lu\n", offsetof(XSetWindowAttributes, override_redirect));
     printf("offsetof(XSetWindowAttributes, event_mask) = %lu\n", offsetof(XSetWindowAttributes, event_mask));
+    printf("sizeof(XWindowAttributes) = %lu\n", sizeof(XWindowAttributes));
 
 	Display *d = XOpenDisplay(NULL);
 	int s = DefaultScreen(d);
@@ -62,5 +62,11 @@ int main() {
 	swa.override_redirect = 1;
 	swa.event_mask = ExposureMask | KeyPressMask | VisibilityChangeMask;
     XCreateWindow(d, rootWindow, 100, 100, 500, 500, 0, CopyFromParent, CopyFromParent, CopyFromParent, 0, 0);
+
+    int nextensions;
+    char **extensions = XListExtensions(d, &nextensions);
+    for (int i = 0; i < nextensions; i++) {
+        printf("%s\n", extensions[i]);
+    }
+    XFreeExtensionList(extensions);
 }
-*/
