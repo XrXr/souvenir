@@ -205,6 +205,9 @@ XftTextExtentsUtf8 :: foreign proc (display *XDisplay, pub *XftFont, string *u8,
 
 XftDrawStringUtf8 :: foreign proc (draw  *XftDraw, color *XftColor, pub *XftFont, x s32, y s32, string *u8, len s32)
 
+XftDrawRect :: foreign proc (d *XftDraw, color *XftColor, x s32, y s32, width u32, height u32)
+
+
 struct dirent {
 	d_ino u64
 	d_off s64
@@ -402,7 +405,7 @@ main :: proc () {
   	swa.event_mask = 98305
   	// CWOverrideRedirect | CWBackPixel | CWEventMask
   	value_mask := 2562
-    w = XCreateWindow(d, rootWindow, 0, 100, rootWindowAttr.width, 500, 0, CopyFromParent, CopyFromParent, nil, value_mask, &swa)
+    w = XCreateWindow(d, rootWindow, 0, 100, rootWindowAttr.width, app.font.height, 0, CopyFromParent, CopyFromParent, nil, value_mask, &swa)
     XSelectInput(d, w, 32769)
   	XMapWindow(d, w)
 
@@ -451,18 +454,23 @@ mainLoop :: proc (app *souvenir) {
 			var castHack *void
 			castHack = &e
 			keyEvent = castHack
-
-			if keyEvent.keycode == 111 {
-				app.selected -= 1
+			// left arrow
+			if keyEvent.keycode == 113 {
+				if app.selected > 0 {
+					app.selected -= 1
+				}
 				draw(app)
 			}
-			if keyEvent.keycode == 116 {
+			// right arrow
+			if keyEvent.keycode == 114 {
 				app.selected += 1
 				draw(app)
 			}
+			// esc
 			if keyEvent.keycode == 9 {
 				break
 			}
+			// backspace
 			if keyEvent.keycode == 22 {
 				if app.filter.length > 0 {
 					app.filter.length -= 1
@@ -483,6 +491,7 @@ mainLoop :: proc (app *souvenir) {
 			}
 			var keysym u8
 			diff := XLookupString(keyEvent, &keysym, 1, nil, nil)
+			// check for whether the character is printable
 			if diff > 0 && keysym >= 32 && keysym <= 126 && app.filter.length < app.maxFilterLength {
 				@(app.filter.data + app.filter.length) = keysym
 				app.filter.length += diff
@@ -522,9 +531,9 @@ draw :: proc (app *souvenir) {
 			filterWidth = filterMetrics.width
 		}
 	}
-	XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, app.font.height, app.filter.data, filterLength)
+	XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, app.font.ascent, app.filter.data, filterLength)
 	if truncate {
-		XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x + filterWidth, app.font.height, "...".data, "...".length)
+		XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x + filterWidth, app.font.ascent, "...".data, "...".length)
 	}
 	x += app.filterInputWidth
 
@@ -553,14 +562,13 @@ draw :: proc (app *souvenir) {
 			die("path too large")
 		}
 
-		nextX := x + stringWidth(app, exe.fileName)
+		itemWidth := stringWidth(app, exe.fileName)
+		nextX := x + itemWidth
 		if nextX >= app.windowWidth {
 			break
 		}
 		// space between items
 		nextX += 20
-
-		XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, app.font.height, exe.fileName.data, exe.fileName.length)
 
 		if entryNumber == app.selected {
 			memcpy(stringBufferPointer, exe.parentDirectory.data, exe.parentDirectory.length)
@@ -568,10 +576,14 @@ draw :: proc (app *souvenir) {
 			@(stringBufferPointer + exe.parentDirectory.length) = 47
 			memcpy(stringBufferPointer + exe.parentDirectory.length + 1, exe.fileName.data, exe.fileName.length)
 			totalLength := exe.parentDirectory.length + exe.fileName.length + 1
-			//XDrawString(app.display, app.window, app.normalTextGc, 200, y, stringBufferPointer, totalLength)
 			memcpy(app.selectedPath, stringBufferPointer, totalLength)
 			app.selectedPath[totalLength] = 0
+			// compiler bug: can't take address directly in the arguments
+			pSelectionColor := &app.selectionColor
+			XftDrawRect(app.xftWindowDraw, pSelectionColor, x-5, 0, itemWidth+10, app.font.height)
 		}
+		XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, app.font.ascent, exe.fileName.data, exe.fileName.length)
+
 		entryNumber += 1
 		x = nextX
 	}
