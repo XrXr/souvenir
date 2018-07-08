@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <dirent.h>
+#include <unistd.h>
 
 // Window myCreateWindow(
 //     Display*        display,
@@ -43,6 +44,7 @@ int main() {
     printf("offsetof(XSetWindowAttributes, override_redirect) = %lu\n", offsetof(XSetWindowAttributes, override_redirect));
     printf("offsetof(XSetWindowAttributes, event_mask) = %lu\n", offsetof(XSetWindowAttributes, event_mask));
     printf("sizeof(XWindowAttributes) = %lu\n", sizeof(XWindowAttributes));
+    printf("R_OK | X_OK = %d\n", R_OK | X_OK);
 
 	Display *d = XOpenDisplay(NULL);
 	int s = DefaultScreen(d);

@@ -207,6 +207,8 @@ XftDrawStringUtf8 :: foreign proc (draw  *XftDraw, color *XftColor, pub *XftFont
 
 XftDrawRect :: foreign proc (d *XftDraw, color *XftColor, x s32, y s32, width u32, height u32)
 
+access :: foreign proc (path *u8, mod s32) -> s32
+
 
 struct dirent {
 	d_ino u64
@@ -514,6 +516,7 @@ mainLoop :: proc (app *souvenir) {
 filter :: proc (app *souvenir) {
 	nMatches := 0
 	widthSoFar := app.leftPadding + app.filterInputWidth
+	var pathBuffer [5000]u8
 	for i := 0..app.exeCount-1 {
 		if widthSoFar > app.windowWidth {
 			nMatches -= 1
@@ -538,6 +541,16 @@ filter :: proc (app *souvenir) {
 				continue
 			}
 		}
+		totalLength := exe.dirPath.length + 1 + exe.fileName.length + 1
+		if totalLength > 5000 {
+			continue
+		}
+		fullExePath(exe, &pathBuffer)
+		// R_OK | X_OK = 5
+		if access(&pathBuffer, 5) != 0 {
+			continue
+		}
+
 		app.filteredExeList[nMatches] = exe
 		nMatches += 1
 		widthSoFar += stringWidth(app, exe.fileName) + app.interItemPadding
@@ -553,12 +566,7 @@ launch :: proc (exe *executable) {
 	}
 	var pBuffer *u8
 	pBuffer = &pathBuffer
-
-	// 47 is '/'
-	memcpy(pBuffer, exe.dirPath.data, exe.dirPath.length)
-	pathBuffer[exe.dirPath.length] = 47
-	memcpy(pBuffer + exe.dirPath.length + 1, exe.fileName.data, exe.fileName.length)
-	pathBuffer[totalLength] = 0
+	fullExePath(exe, pBuffer)
 
 	var argv [2]*u8
 	argv[0] = pBuffer
@@ -569,6 +577,14 @@ launch :: proc (exe *executable) {
 	puts("\n")
 }
 
+fullExePath :: proc(exe *executable, buffer *[5000]u8) {
+	// 47 is '/'
+	memcpy(buffer, exe.dirPath.data, exe.dirPath.length)
+	buffer[exe.dirPath.length] = 47
+	memcpy(&buffer[exe.dirPath.length + 1], exe.fileName.data, exe.fileName.length)
+	buffer[exe.dirPath.length + 1 + exe.fileName.length] = 0
+}
+
 stringWidth :: proc (app *souvenir, str string) -> int {
 	var metrics XGlyphInfo
 	XftTextExtentsUtf8(app.display, app.font, str.data, str.length, &metrics)
@@ -577,7 +593,6 @@ stringWidth :: proc (app *souvenir, str string) -> int {
 
 
 draw :: proc (app *souvenir) {
-	// compiler bug: can't take address directly in the arguments
 	pTextColor := &app.textColor
 
 	XClearWindow(app.display, app.window)
@@ -607,9 +622,7 @@ draw :: proc (app *souvenir) {
 		itemWidth := stringWidth(app, exe.fileName)
 
 		if i == app.selected {
-			// compiler bug: can't take address directly in the arguments
-			pSelectionColor := &app.selectionColor
-			XftDrawRect(app.xftWindowDraw, pSelectionColor, x-5, 0, itemWidth+10, app.font.height)
+			XftDrawRect(app.xftWindowDraw, &app.selectionColor, x-5, 0, itemWidth+10, app.font.height)
 		}
 		XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, app.font.ascent, exe.fileName.data, exe.fileName.length)
 
