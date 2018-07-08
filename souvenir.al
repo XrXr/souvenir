@@ -55,7 +55,7 @@ struct Screen {
 	height s32
 	mwidth s32
 	mheight s32
-    ndepths s32
+	ndepths s32
 	depths *void
 	root_depth s32
 	root_visual *void
@@ -230,7 +230,7 @@ posix_spawn :: foreign proc (pid *void, path *u8, file_actions *void, attrp *voi
 getEnviron :: foreign proc () -> **u8
 
 struct executable {
-	parentDirectory string
+	dirPath string
 	fileName string
 }
 
@@ -242,6 +242,8 @@ struct souvenir {
 	exeCount int
 	exeList *[5000]executable
 	selectedPath *[5000]u8
+	filteredExeList *[50]*executable
+	nFilteredExeList int
 	selected int
 	filter string
 	maxFilterLength int
@@ -251,6 +253,8 @@ struct souvenir {
 	textColor XftColor
 	filterInputWidth int
 	widthOfThreeDots int
+	leftPadding int
+	interItemPadding int
 }
 
 main :: proc () {
@@ -334,7 +338,7 @@ main :: proc () {
 				stringSize := makeString(newString, fileNamePtr, fileNameLen)
 				exeFileNamesOffset += stringSize
 
-				(exeListPtr+exeCount).parentDirectory = dirPath
+				(exeListPtr+exeCount).dirPath = dirPath
 				(exeListPtr+exeCount).fileName = string(newString)
 				exeCount += 1
 				if exeCount >= exeBufferSize {
@@ -347,79 +351,80 @@ main :: proc () {
 
 	var app souvenir
 
-  	d = XOpenDisplay(nil)
-  	if !d {
-  		die("Can't open display")
-  	}
+	d = XOpenDisplay(nil)
+	if !d {
+		die("Can't open display")
+	}
 
-  	s := d.default_screen
-  	screen := d.screens + s
-  	rootWindow := screen.root
+	s := d.default_screen
+	screen := d.screens + s
+	rootWindow := screen.root
 
-  	gc := screen.default_gc
-  	defaultColorMap := screen.cmap
+	gc := screen.default_gc
+	defaultColorMap := screen.cmap
 
-  	var rootWindowAttr XWindowAttributes
-  	if XGetWindowAttributes(d, rootWindow, &rootWindowAttr) == 0 {
-  		die("Fail to get width of the root window")
-  	}
-  	app.windowWidth = rootWindowAttr.width
+	var rootWindowAttr XWindowAttributes
+	if XGetWindowAttributes(d, rootWindow, &rootWindowAttr) == 0 {
+		die("Fail to get width of the root window")
+	}
+	app.windowWidth = rootWindowAttr.width
 
-  	var xftColor XftColor
+	var xftColor XftColor
 
-  	if XftColorAllocName(d, screen.root_visual, screen.cmap, "#005577".data, &xftColor) == 0 {
-  		die("Can't allocate selection color")
-  	}
-  	app.selectionColor = xftColor
+	if XftColorAllocName(d, screen.root_visual, screen.cmap, "#005577".data, &xftColor) == 0 {
+		die("Can't allocate selection color")
+	}
+	app.selectionColor = xftColor
 
 
-  	if XftColorAllocName(d, screen.root_visual, screen.cmap, "#bbbbbb".data, &xftColor) == 0 {
-  		die("Can't allocate text color")
-  	}
-  	app.textColor = xftColor
+	if XftColorAllocName(d, screen.root_visual, screen.cmap, "#bbbbbb".data, &xftColor) == 0 {
+		die("Can't allocate text color")
+	}
+	app.textColor = xftColor
 
-  	if XftColorAllocName(d, screen.root_visual, screen.cmap, "#222222".data, &xftColor) == 0 {
-  		die("Can't allocate background color")
-  	}
-  	backgroundPixel := xftColor.pixel
+	if XftColorAllocName(d, screen.root_visual, screen.cmap, "#222222".data, &xftColor) == 0 {
+		die("Can't allocate background color")
+	}
+	backgroundPixel := xftColor.pixel
 
-  	app.font = XftFontOpenName(d, s, "monospace-12".data)
-  	if !app.font {
-  		die("Can't open font")
-  	}
+	app.font = XftFontOpenName(d, s, "monospace-12".data)
+	if !app.font {
+		die("Can't open font")
+	}
 
-  	puts("ascent: ")
-  	print_int(app.font.ascent)
-  	puts("descent: ")
-  	print_int(app.font.descent)
-  	puts("height: ")
-  	print_int(app.font.height)
-  	puts("ascent - descent: ")
-  	print_int(app.font.ascent - app.font.descent)
+	puts("ascent: ")
+	print_int(app.font.ascent)
+	puts("descent: ")
+	print_int(app.font.descent)
+	puts("height: ")
+	print_int(app.font.height)
+	puts("ascent - descent: ")
+	print_int(app.font.ascent - app.font.descent)
 
-  	var swa XSetWindowAttributes
-  	CopyFromParent := 0
-  	swa.override_redirect = 1
-  	swa.background_pixel = backgroundPixel
-  	// ExposureMask | KeyPressMask | VisibilityChangeMask
-  	swa.event_mask = 98305
-  	// CWOverrideRedirect | CWBackPixel | CWEventMask
-  	value_mask := 2562
-    w = XCreateWindow(d, rootWindow, 0, 100, rootWindowAttr.width, app.font.height, 0, CopyFromParent, CopyFromParent, nil, value_mask, &swa)
-    XSelectInput(d, w, 32769)
-  	XMapWindow(d, w)
+	var swa XSetWindowAttributes
+	CopyFromParent := 0
+	swa.override_redirect = 1
+	swa.background_pixel = backgroundPixel
+	// ExposureMask | KeyPressMask | VisibilityChangeMask
+	swa.event_mask = 98305
+	// CWOverrideRedirect | CWBackPixel | CWEventMask
+	value_mask := 2562
+	w = XCreateWindow(d, rootWindow, 0, 100, rootWindowAttr.width, app.font.height, 0, CopyFromParent, CopyFromParent, nil, value_mask, &swa)
+	XSelectInput(d, w, 32769)
+	XMapWindow(d, w)
 
-  	app.xftWindowDraw = XftDrawCreate(d, w, screen.root_visual, screen.cmap)
-  	if !app.xftWindowDraw {
-  		die("Can't make XftDraw for the window")
-  	}
+	app.xftWindowDraw = XftDrawCreate(d, w, screen.root_visual, screen.cmap)
+	if !app.xftWindowDraw {
+		die("Can't make XftDraw for the window")
+	}
 
-  	RevertToParent := 2
-  	CurrentTime := 0
-  	XSetInputFocus(d, w, RevertToParent, CurrentTime)
+	RevertToParent := 2
+	CurrentTime := 0
+	XSetInputFocus(d, w, RevertToParent, CurrentTime)
 
-  	var filterBuffer [5000]u8
-  	var selectedPathBuffer [5000]u8
+	var filterBuffer [5000]u8
+	var selectedPathBuffer [5000]u8
+	var filteredExeList [50]*executable
 	app.display = d
 	app.window = w
 	app.exeList = &executableList
@@ -429,10 +434,14 @@ main :: proc () {
 	app.maxFilterLength = 5000 - 8
 	app.selectedPath = &selectedPathBuffer
 	app.filter.length = 0
-  	app.widthOfThreeDots = stringWidth(&app, "...")
-  	// arbitary
+	app.filteredExeList = &filteredExeList
+	app.widthOfThreeDots = stringWidth(&app, "...")
+	app.leftPadding = 5
+	app.interItemPadding = 20
+	// arbitary
 	app.filterInputWidth = stringWidth(&app, "M") * 15
 
+	filter(&app)
 	mainLoop(&app)
 
 	free(pathBuffer)
@@ -442,9 +451,9 @@ main :: proc () {
 
 mainLoop :: proc (app *souvenir) {
 	var e XEvent
-  	Expose := 12
-  	KeyPress := 2
-  	for true {
+	Expose := 12
+	KeyPress := 2
+	for true {
 		XNextEvent(app.display, &e)
 		if e.type == Expose {
 			draw(app)
@@ -463,7 +472,9 @@ mainLoop :: proc (app *souvenir) {
 			}
 			// right arrow
 			if keyEvent.keycode == 114 {
-				app.selected += 1
+				if app.selected < app.nFilteredExeList - 1 {
+					app.selected += 1
+				}
 				draw(app)
 			}
 			// esc
@@ -475,19 +486,16 @@ mainLoop :: proc (app *souvenir) {
 				if app.filter.length > 0 {
 					app.filter.length -= 1
 					app.selected = 0
+					filter(app)
 					draw(app)
 				}
 			}
 			// enter
 			if keyEvent.keycode == 36 {
-				var argv [2]*u8
-				argv[0] = app.selectedPath
-				argv[1] = nil
-				env := environ()
-
-				posix_spawn(nil, app.selectedPath, nil, nil, &argv, env)
-				puts("have a nice trip!\n")
-				break
+				if app.nFilteredExeList > 0 {
+					launch(app.filteredExeList[app.selected])
+					return
+				}
 			}
 			var keysym u8
 			diff := XLookupString(keyEvent, &keysym, 1, nil, nil)
@@ -496,10 +504,69 @@ mainLoop :: proc (app *souvenir) {
 				@(app.filter.data + app.filter.length) = keysym
 				app.filter.length += diff
 				app.selected = 0
+				filter(app)
 				draw(app)
 			}
 		}
-  	}
+	}
+}
+
+filter :: proc (app *souvenir) {
+	nMatches := 0
+	widthSoFar := app.leftPadding + app.filterInputWidth
+	for i := 0..app.exeCount-1 {
+		if widthSoFar > app.windowWidth {
+			nMatches -= 1
+			break
+		}
+		exe := &app.exeList[i]
+		if app.filter.length > 0 {
+			match := false
+			for i := 0..exe.fileName.length-app.filter.length {
+				same := true
+				for j := 0..app.filter.length-1 {
+					if @(app.filter.data + j) != @(exe.fileName.data + i + j) {
+						same = false
+					}
+				}
+				if same {
+					match = true
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+		app.filteredExeList[nMatches] = exe
+		nMatches += 1
+		widthSoFar += stringWidth(app, exe.fileName) + app.interItemPadding
+	}
+	app.nFilteredExeList = nMatches
+}
+
+launch :: proc (exe *executable) {
+	totalLength := exe.dirPath.length + 1 + exe.fileName.length + 1
+	var pathBuffer [5000]u8
+	if totalLength > 5000 {
+		die("the path for the selected executable is too long")
+	}
+	var pBuffer *u8
+	pBuffer = &pathBuffer
+
+	// 47 is '/'
+	memcpy(pBuffer, exe.dirPath.data, exe.dirPath.length)
+	pathBuffer[exe.dirPath.length] = 47
+	memcpy(pBuffer + exe.dirPath.length + 1, exe.fileName.data, exe.fileName.length)
+	pathBuffer[totalLength] = 0
+
+	var argv [2]*u8
+	argv[0] = pBuffer
+	argv[1] = nil
+	env := environ()
+	posix_spawn(nil, pBuffer, nil, nil, &argv, env)
+	writes(pBuffer, totalLength - 1)
+	puts("\n")
 }
 
 stringWidth :: proc (app *souvenir, str string) -> int {
@@ -508,16 +575,13 @@ stringWidth :: proc (app *souvenir, str string) -> int {
 	return metrics.width
 }
 
+
 draw :: proc (app *souvenir) {
-	stringBufferSize := 5000
-	var stringBuffer [5000]u8
-	var stringBufferPointer *u8
-	stringBufferPointer = &stringBuffer
 	// compiler bug: can't take address directly in the arguments
 	pTextColor := &app.textColor
 
 	XClearWindow(app.display, app.window)
-	x := 5
+	x := app.leftPadding
 
 	filterWidth := stringWidth(app, app.filter)
 
@@ -537,55 +601,19 @@ draw :: proc (app *souvenir) {
 	}
 	x += app.filterInputWidth
 
-	entryNumber := 0
-	for i := 0..app.exeCount-1 {
-		exe := app.exeList[i]
-		if app.filter.length > 0 {
-			match := false
-			for i := 0..exe.fileName.length-app.filter.length {
-				same := true
-				for j := 0..app.filter.length-1 {
-					if @(app.filter.data + j) != @(exe.fileName.data + i + j) {
-						same = false
-					}
-				}
-				if same {
-					match = true
-					break
-				}
-			}
-			if !match {
-				continue
-			}
-		}
-		if exe.parentDirectory.length + exe.fileName.length > stringBufferSize {
-			die("path too large")
-		}
+	for i := 0..app.nFilteredExeList-1 {
+		exe := app.filteredExeList[i]
 
 		itemWidth := stringWidth(app, exe.fileName)
-		nextX := x + itemWidth
-		if nextX >= app.windowWidth {
-			break
-		}
-		// space between items
-		nextX += 20
 
-		if entryNumber == app.selected {
-			memcpy(stringBufferPointer, exe.parentDirectory.data, exe.parentDirectory.length)
-			// 47 is '/'
-			@(stringBufferPointer + exe.parentDirectory.length) = 47
-			memcpy(stringBufferPointer + exe.parentDirectory.length + 1, exe.fileName.data, exe.fileName.length)
-			totalLength := exe.parentDirectory.length + exe.fileName.length + 1
-			memcpy(app.selectedPath, stringBufferPointer, totalLength)
-			app.selectedPath[totalLength] = 0
+		if i == app.selected {
 			// compiler bug: can't take address directly in the arguments
 			pSelectionColor := &app.selectionColor
 			XftDrawRect(app.xftWindowDraw, pSelectionColor, x-5, 0, itemWidth+10, app.font.height)
 		}
 		XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, app.font.ascent, exe.fileName.data, exe.fileName.length)
 
-		entryNumber += 1
-		x = nextX
+		x += itemWidth + app.interItemPadding
 	}
 }
 
