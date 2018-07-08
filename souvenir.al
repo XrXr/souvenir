@@ -207,6 +207,8 @@ XftDrawStringUtf8 :: foreign proc (draw  *XftDraw, color *XftColor, pub *XftFont
 
 XftDrawRect :: foreign proc (d *XftDraw, color *XftColor, x s32, y s32, width u32, height u32)
 
+XGrabKeyboard :: foreign proc (display *XDisplay, grab_window u64, owner_events s32, pointer_mode s32, keyboard_mode s32, time u64) -> s32
+
 access :: foreign proc (path *u8, mod s32) -> s32
 
 
@@ -394,15 +396,6 @@ main :: proc () {
 		die("Can't open font")
 	}
 
-	puts("ascent: ")
-	print_int(app.font.ascent)
-	puts("descent: ")
-	print_int(app.font.descent)
-	puts("height: ")
-	print_int(app.font.height)
-	puts("ascent - descent: ")
-	print_int(app.font.ascent - app.font.descent)
-
 	var swa XSetWindowAttributes
 	CopyFromParent := 0
 	swa.override_redirect = 1
@@ -420,9 +413,12 @@ main :: proc () {
 		die("Can't make XftDraw for the window")
 	}
 
-	RevertToParent := 2
 	CurrentTime := 0
-	XSetInputFocus(d, w, RevertToParent, CurrentTime)
+	GrabModeAsync := 1
+	GrabSuccess := 0
+	if XGrabKeyboard(d, w, 1, GrabModeAsync, GrabModeAsync, CurrentTime) != GrabSuccess {
+		die("can't grab keyboard")
+	}
 
 	var filterBuffer [5000]u8
 	var selectedPathBuffer [5000]u8
