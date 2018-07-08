@@ -160,8 +160,10 @@ struct XGlyphInfo {
 	yOff s16
 }
 
-
 struct XftFont{
+	ascent s32
+	descent s32
+	height s32
 }
 
 struct XftDraw {
@@ -244,6 +246,8 @@ struct souvenir {
 	font *XftFont
 	selectionColor XftColor
 	textColor XftColor
+	filterInputWidth int
+	widthOfThreeDots int
 }
 
 main :: proc () {
@@ -381,6 +385,15 @@ main :: proc () {
   		die("Can't open font")
   	}
 
+  	puts("ascent: ")
+  	print_int(app.font.ascent)
+  	puts("descent: ")
+  	print_int(app.font.descent)
+  	puts("height: ")
+  	print_int(app.font.height)
+  	puts("ascent - descent: ")
+  	print_int(app.font.ascent - app.font.descent)
+
   	var swa XSetWindowAttributes
   	CopyFromParent := 0
   	swa.override_redirect = 1
@@ -412,8 +425,10 @@ main :: proc () {
 	app.filter = string(&filterBuffer)
 	app.maxFilterLength = 5000 - 8
 	app.selectedPath = &selectedPathBuffer
-
 	app.filter.length = 0
+  	app.widthOfThreeDots = stringWidth(&app, "...")
+  	// arbitary
+	app.filterInputWidth = stringWidth(&app, "M") * 15
 
 	mainLoop(&app)
 
@@ -478,16 +493,41 @@ mainLoop :: proc (app *souvenir) {
   	}
 }
 
+stringWidth :: proc (app *souvenir, str string) -> int {
+	var metrics XGlyphInfo
+	XftTextExtentsUtf8(app.display, app.font, str.data, str.length, &metrics)
+	return metrics.width
+}
+
 draw :: proc (app *souvenir) {
 	stringBufferSize := 5000
 	var stringBuffer [5000]u8
 	var stringBufferPointer *u8
 	stringBufferPointer = &stringBuffer
+	// compiler bug: can't take address directly in the arguments
+	pTextColor := &app.textColor
 
 	XClearWindow(app.display, app.window)
-	y := 70
-	x := 50
-	XDrawString(app.display, app.window, app.normalTextGc, x, 20, app.filter.data, app.filter.length)
+	x := 5
+
+	filterWidth := stringWidth(app, app.filter)
+
+	truncate := filterWidth > app.filterInputWidth
+	filterLength := app.filter.length
+	var filterMetrics XGlyphInfo
+	if truncate {
+		for filterLength > 0 && (x + filterWidth + app.widthOfThreeDots > app.filterInputWidth) {
+			filterLength -= 1
+			XftTextExtentsUtf8(app.display, app.font, app.filter.data, filterLength, &filterMetrics)
+			filterWidth = filterMetrics.width
+		}
+	}
+	XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, app.font.height, app.filter.data, filterLength)
+	if truncate {
+		XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x + filterWidth, app.font.height, "...".data, "...".length)
+	}
+	x += app.filterInputWidth
+
 	entryNumber := 0
 	for i := 0..app.exeCount-1 {
 		exe := app.exeList[i]
@@ -513,18 +553,14 @@ draw :: proc (app *souvenir) {
 			die("path too large")
 		}
 
-		var stringMetric XGlyphInfo
-		XftTextExtentsUtf8(app.display, app.font, exe.fileName.data, exe.fileName.length, &stringMetric)
-		nextX := x + stringMetric.width
+		nextX := x + stringWidth(app, exe.fileName)
 		if nextX >= app.windowWidth {
 			break
 		}
 		// space between items
 		nextX += 20
 
-		// compiler bug: can't take address directly in the arguments
-		pTextColor := &app.textColor
-		XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, 200, exe.fileName.data, exe.fileName.length)
+		XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, app.font.height, exe.fileName.data, exe.fileName.length)
 
 		if entryNumber == app.selected {
 			memcpy(stringBufferPointer, exe.parentDirectory.data, exe.parentDirectory.length)
@@ -543,7 +579,6 @@ draw :: proc (app *souvenir) {
 
 
 makeString :: proc (dest *void, data *u8, length int) -> int {
-//	print_int(int(dest))
 	var lenPtr *int
 	var destChar *u8
 	lenPtr = dest
@@ -551,8 +586,6 @@ makeString :: proc (dest *void, data *u8, length int) -> int {
 
 	@lenPtr = length
 	memcpy(destChar + 8, data, length)
-//	puts(string(dest))
-//	puts("\n")
 	return 8 + length
 }
 
