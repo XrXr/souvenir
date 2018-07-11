@@ -279,8 +279,6 @@ main :: proc () {
 	pathBufferOffset := 0
 	var i int
 	start := 0
-	writes(pathEnv, strlen(pathEnv))
-	puts("\n")
 	for true {
 		thisChar := @(pathEnv+i)
 		// 58 == ':'
