@@ -279,7 +279,7 @@ main :: proc () {
 	pathBufferOffset := 0
 	var i int
 	start := 0
-	for true {
+	for {
 		thisChar := @(pathEnv+i)
 		// 58 == ':'
 		if (thisChar == 58 || thisChar == 0) && i - start > 0 {
@@ -322,7 +322,7 @@ main :: proc () {
 			perror("could not open dir".data)
 			continue
 		}
-		for true {
+		for {
 			entry := readdir(dir)
 			if !entry {
 				break
@@ -330,18 +330,18 @@ main :: proc () {
 			DT_REG := 8
 			DT_LNK := 10
 			if entry.d_type == DT_REG || entry.d_type == DT_LNK {
-				fileName := entry.d_name
-				fileNamePtr := &fileName
-				fileNameLen := strlen(fileNamePtr)
+				fileName := &entry.d_name
+				fileNameLen := strlen(fileName)
 				if exeFileNamesOffset + fileNameLen >= exeFileNamesBufferSize {
 					break
 				}
 				newString := exeFileNames + exeFileNamesOffset
-				stringSize := makeString(newString, fileNamePtr, fileNameLen)
+				stringSize := makeString(newString, fileName, fileNameLen)
 				exeFileNamesOffset += stringSize
 
 				(exeListPtr+exeCount).dirPath = dirPath
 				(exeListPtr+exeCount).fileName = string(newString)
+
 				exeCount += 1
 				if exeCount >= exeBufferSize {
 					break
@@ -449,7 +449,7 @@ mainLoop :: proc (app *souvenir) {
 	var e XEvent
 	Expose := 12
 	KeyPress := 2
-	for true {
+	for {
 		XNextEvent(app.display, &e)
 		if e.type == Expose {
 			draw(app)
