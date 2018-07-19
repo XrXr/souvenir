@@ -594,11 +594,11 @@ draw :: proc (app *souvenir) {
 
 	filterWidth := stringWidth(app, app.filter)
 
-	truncate := filterWidth > app.filterInputWidth
+	truncate := filterWidth > app.filterInputWidth - app.widthOfThreeDots
 	filterLength := app.filter.length
 	var filterMetrics XGlyphInfo
 	if truncate {
-		for filterLength > 0 && (x + filterWidth + app.widthOfThreeDots > app.filterInputWidth) {
+		for filterLength > 0 && (filterWidth > app.filterInputWidth - app.widthOfThreeDots) {
 			filterLength -= 1
 			XftTextExtentsUtf8(app.display, app.font, app.filter.data, filterLength, &filterMetrics)
 			filterWidth = filterMetrics.width
