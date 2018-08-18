@@ -507,6 +507,51 @@ mainLoop :: proc (app *souvenir) {
 	}
 }
 
+swap :: proc (a **executable, b **executable) {
+    temp := @a
+    @a = @b
+    @b = temp
+}
+
+partition :: proc (arr *[50]*executable, startIdx int, endIdx int) -> int {
+    length := endIdx - startIdx
+    // TODO: pick pivot randomly
+    pivotIdx := startIdx
+    pivot := arr[pivotIdx]
+    swap(&arr[endIdx-1], &arr[pivotIdx])
+    lesserCount := 0
+    greaterCount := 0
+    done := false
+    for lesserCount + greaterCount + 1 != length {
+        // compiler bug: arr[startIdx+lesserCount].fileName.length doesn't work
+        for (@(arr[startIdx+lesserCount])).fileName.length > pivot.fileName.length {
+            nextGreaterIdx := endIdx - 2 - greaterCount
+            swap(&arr[nextGreaterIdx], &arr[startIdx+lesserCount])
+            greaterCount += 1
+            done = lesserCount + greaterCount + 1 == length
+            if done {
+                break
+            }
+        }
+        if done {
+            break
+        }
+        lesserCount += 1
+    }
+    pivotIdx = endIdx - 1 - greaterCount
+    swap(&arr[endIdx-1], &arr[pivotIdx])
+    return pivotIdx
+}
+
+sortByLength :: proc (arr *[50]*executable, startIdx int, endIdx int) {
+    if (endIdx - startIdx) <= 1 {
+        return
+    }
+    pivotIdx := partition(arr, startIdx, endIdx)
+    sortByLength(arr, startIdx, pivotIdx)
+    sortByLength(arr, pivotIdx+1, endIdx)
+}
+
 filter :: proc (app *souvenir) {
 	nMatches := 0
 	widthSoFar := app.leftPadding + app.filterInputWidth
@@ -550,6 +595,9 @@ filter :: proc (app *souvenir) {
 		widthSoFar += stringWidth(app, exe.fileName) + app.interItemPadding
 	}
 	app.nFilteredExeList = nMatches
+    // The longer the string is, the more different it is from the filter.
+    // All the items in app.filteredExeList have the filter as a substring.
+    sortByLength(app.filteredExeList, 0, nMatches)
 }
 
 launch :: proc (exe *executable) {
