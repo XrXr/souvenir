@@ -561,16 +561,17 @@ filter :: proc (app *souvenir) {
         }
         exe := &app.exeList[i]
         if app.filter.length > 0 {
+            // Sorry, no Knuth–Morris–Pratt for today.
             match := false
             for i := 0..exe.fileName.length-app.filter.length {
-                same := true
+                match = true
                 for j := 0..app.filter.length-1 {
                     if @(app.filter.data + j) != @(exe.fileName.data + i + j) {
-                        same = false
+                        match = false
+                        break
                     }
                 }
-                if same {
-                    match = true
+                if match {
                     break
                 }
             }
