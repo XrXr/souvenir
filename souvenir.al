@@ -175,6 +175,8 @@ XCreateWindow :: foreign proc (display *XDisplay, window u64, x s32, y s32, widt
 
 XMapWindow :: foreign proc (display *XDisplay, w u64) -> s32
 
+XResizeWindow :: foreign proc (display *XDisplay, w u64, width u32, height u32)
+
 XNextEvent :: foreign proc (display *XDisplay, event *XEvent) -> s32
 
 XFillRectangle :: foreign proc (display *XDisplay, d u64, gc *void, x s32, y s32, width u32, height u32) -> s32
@@ -403,8 +405,7 @@ main :: proc () {
     swa.event_mask = 98305
     // CWOverrideRedirect | CWBackPixel | CWEventMask
     value_mask := 2562
-    w = XCreateWindow(d, rootWindow, 0, 100, rootWindowAttr.width, app.font.height, 0, CopyFromParent, CopyFromParent, nil, value_mask, &swa)
-    XSelectInput(d, w, 32769)
+    w = XCreateWindow(d, rootWindow, 0, 100, 1, 1, 0, CopyFromParent, CopyFromParent, nil, value_mask, &swa)
     XMapWindow(d, w)
 
     app.xftWindowDraw = XftDrawCreate(d, w, screen.root_visual, screen.cmap)
@@ -415,6 +416,9 @@ main :: proc () {
     if !grabKeyboard(d, w) {
         die("can't grab keyboard")
     }
+
+    // say multiple instances of souvenir is launched, we only want to show the one that wins the keyboard grab
+    XResizeWindow(d, w, rootWindowAttr.width, app.font.height)
 
     var filterBuffer [5000]u8
     var selectedPathBuffer [5000]u8
@@ -677,7 +681,7 @@ grabKeyboard :: proc (display *XDisplay, window u64) -> bool {
     GrabSuccess := 0
     // Try for about a second. XGrabKeyboard fails if we call it too
     // quickly after being launched by i3wm
-    for 1..1000000 {
+    for 1..10000 {
         if XGrabKeyboard(display, window, 1, GrabModeAsync, GrabModeAsync, CurrentTime) == GrabSuccess {
             return true
         }
