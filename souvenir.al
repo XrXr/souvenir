@@ -230,6 +230,7 @@ malloc :: foreign proc (size u64) -> *void
 perror :: foreign proc (s *u8)
 free :: foreign proc (buffer *void)
 posix_spawn :: foreign proc (pid *void, path *u8, file_actions *void, attrp *void, argv **u8, envp **u8) -> s32
+usleep :: foreign proc (usec u32) -> s32
 
 getEnviron :: foreign proc () -> **u8
 
@@ -408,13 +409,10 @@ main :: proc () {
 
 	app.xftWindowDraw = XftDrawCreate(d, w, screen.root_visual, screen.cmap)
 	if !app.xftWindowDraw {
-		die("Can't make XftDraw for the window")
+		die("can't make XftDraw for the window")
 	}
 
-	CurrentTime := 0
-	GrabModeAsync := 1
-	GrabSuccess := 0
-	if XGrabKeyboard(d, w, 1, GrabModeAsync, GrabModeAsync, CurrentTime) != GrabSuccess {
+	if !grabKeyboard(d, w) {
 		die("can't grab keyboard")
 	}
 
@@ -672,6 +670,20 @@ draw :: proc (app *souvenir) {
 	}
 }
 
+grabKeyboard :: proc (display *XDisplay, window u64) -> bool {
+    CurrentTime := 0
+    GrabModeAsync := 1
+    GrabSuccess := 0
+    // Try for about a second. XGrabKeyboard fails if we call it too
+    // quickly after being launched by i3wm
+    for 1..1000000 {
+        if XGrabKeyboard(display, window, 1, GrabModeAsync, GrabModeAsync, CurrentTime) == GrabSuccess {
+            return true
+        }
+        usleep(1)
+    }
+    return false
+}
 
 makeString :: proc (dest *void, data *u8, length int) -> int {
 	var lenPtr *int
@@ -685,6 +697,7 @@ makeString :: proc (dest *void, data *u8, length int) -> int {
 }
 
 die :: proc (info string) {
+	puts("[souvenir] ")
 	puts(info)
 	puts("\n")
 	exit(1)
