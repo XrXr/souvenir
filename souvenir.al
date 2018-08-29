@@ -247,7 +247,7 @@ struct souvenir {
     windowWidth int
     normalTextGc *void
     exeCount int
-    exeList *[5000]executable
+    exeList *[20000]executable
     selectedPath *[5000]u8
     filteredExeList *[50]*executable
     nFilteredExeList int
@@ -308,17 +308,17 @@ main :: proc () {
         }
         i += 1
     }
-    exeBufferSize := 5000
-    var executableList [5000]executable
-    // TODO hack before we can do executableList[3].something = 100
-    var exeListPtr *executable
-    exeListPtr = &executableList
+    maxExeCount := 20000
+    var executableList [20000]executable
+    exeFileNamesBufferSize := maxExeCount * 256
     exeCount := 0
-    exeFileNamesBufferSize := 5000 * 256
     var exeFileNames *u8
     exeFileNames = malloc(exeFileNamesBufferSize)
     exeFileNamesOffset := 0
     for i := 0..pathCount-1 {
+        if exeCount >= maxExeCount {
+            break
+        }
         dirPath := paths[i]
         dir := opendir(dirPath.data)
         if !dir {
@@ -342,17 +342,21 @@ main :: proc () {
                 stringSize := makeString(newString, fileName, fileNameLen)
                 exeFileNamesOffset += stringSize
 
-                (exeListPtr+exeCount).dirPath = dirPath
-                (exeListPtr+exeCount).fileName = string(newString)
+                executableList[exeCount].dirPath = dirPath
+                executableList[exeCount].fileName = string(newString)
 
                 exeCount += 1
-                if exeCount >= exeBufferSize {
+                if exeCount >= maxExeCount {
+                    puts("warning: exe buffer full\n")
                     break
                 }
             }
         }
         closedir(dir)
     }
+
+    puts("Number of executables ")
+    print_int(exeCount)
 
     var app souvenir
 
