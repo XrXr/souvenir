@@ -563,10 +563,6 @@ filter :: proc (app *souvenir) {
     widthSoFar := app.leftPadding + app.filterInputWidth
     var pathBuffer [5000]u8
     for i := 0..app.exeCount-1 {
-        if widthSoFar > app.windowWidth {
-            nMatches -= 1
-            break
-        }
         exe := &app.exeList[i]
         if app.filter.length > 0 {
             // Sorry, no Knuth–Morris–Pratt for today.
@@ -587,6 +583,33 @@ filter :: proc (app *souvenir) {
                 continue
             }
         }
+
+        // Don't add it to the filtered list if there is an exe with the same
+        // name already there. If an item comes earlier in the exeList, it
+        // means that that exe is found earlier in the $PATH and so should take priority.
+        // This is n squared but since the number of duplications and the total
+        // filtered list size is small, it's fine.
+        duplicate := false
+        for j := 0..nMatches-1 {
+            otherExe := app.filteredExeList[j]
+            if otherExe.fileName.length != exe.fileName.length {
+                continue
+            }
+            duplicate = true
+            for k := 0..exe.fileName.length-1 {
+                if @(otherExe.fileName.data + k) != @(exe.fileName.data + k) {
+                    duplicate = false
+                    break
+                }
+            }
+            if duplicate {
+                break
+            }
+        }
+        if duplicate {
+            continue
+        }
+
         totalLength := exe.dirPath.length + 1 + exe.fileName.length + 1
         if totalLength > 5000 {
             continue
@@ -597,9 +620,12 @@ filter :: proc (app *souvenir) {
             continue
         }
 
+        widthSoFar += stringWidth(app, exe.fileName) + app.interItemPadding
+        if widthSoFar > app.windowWidth {
+            break
+        }
         app.filteredExeList[nMatches] = exe
         nMatches += 1
-        widthSoFar += stringWidth(app, exe.fileName) + app.interItemPadding
     }
     app.nFilteredExeList = nMatches
     // The longer the string is, the more different it is from the filter.
