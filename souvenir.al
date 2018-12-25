@@ -701,7 +701,6 @@ stringWidth :: proc (app *souvenir, str string) -> int {
     return metrics.width
 }
 
-
 draw :: proc (app *souvenir) {
     pTextColor := &app.textColor
 
@@ -710,18 +709,17 @@ draw :: proc (app *souvenir) {
 
     filterWidth := stringWidth(app, app.filter)
 
-    truncate := filterWidth > app.filterInputWidth - app.widthOfThreeDots
+    truncationThreshold := app.filterInputWidth - app.widthOfThreeDots - 10
     filterLength := app.filter.length
     var filterMetrics XGlyphInfo
-    if truncate {
-        for filterLength > 0 && (filterWidth > app.filterInputWidth - app.widthOfThreeDots) {
-            filterLength -= 1
-            XftTextExtentsUtf8(app.display, app.font, app.filter.data, filterLength, &filterMetrics)
-            filterWidth = filterMetrics.width
-        }
+    for filterLength > 0 && (filterWidth > truncationThreshold) {
+        filterLength -= 1
+        XftTextExtentsUtf8(app.display, app.font, app.filter.data, filterLength, &filterMetrics)
+        filterWidth = filterMetrics.width
     }
+
     XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, app.font.ascent, app.filter.data, filterLength)
-    if truncate {
+    if filterLength < app.filter.length {
         XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x + filterWidth, app.font.ascent, "...".data, "...".length)
     }
     x += app.filterInputWidth
