@@ -33,6 +33,7 @@ char **getEnviron() {
     return environ;
 }
 int main() {
+    printf("sizeof(ssize_t)=%lu\n", sizeof(ssize_t));
     printf("%s\n", environ[0]);
     printf("ExposureMask | KeyPressMask | VisibilityChangeMask = %lu\n", ExposureMask | KeyPressMask | VisibilityChangeMask);
     printf("CWOverrideRedirect | CWBackPixel | CWEventMask = %lu\n", CWOverrideRedirect | CWBackPixel | CWEventMask);

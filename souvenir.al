@@ -233,8 +233,8 @@ perror :: foreign proc (s *u8)
 free :: foreign proc (buffer *void)
 posix_spawn :: foreign proc (pid *void, path *u8, file_actions *void, attrp *void, argv **u8, envp **u8) -> s32
 usleep :: foreign proc (usec u32) -> s32
-
 getEnviron :: foreign proc () -> **u8
+readlink :: foreign proc (path *u8, buf *u8, bufsize u64) -> s64
 
 struct executable {
     dirPath string
@@ -273,6 +273,8 @@ main :: proc () {
         die("environmental variable PATH not set")
     }
 
+    readlinkMaxLength := 1000
+    var readlinkScratchBuffer [1000]u8
     var paths [100]string
     pathCount := 0
     pathBufferSize := 1000
@@ -287,17 +289,45 @@ main :: proc () {
         // 58 == ':'
         if (thisChar == 58 || thisChar == 0) && i - start > 0 {
             len := i - start
+            if len == 0 {
+                break
+            }
             if pathBufferOffset + 8 + len + 1 >= pathBufferSize {
                 break
             }
-            newString := pathBufferChar + pathBufferOffset
-            newStringSize := makeString(newString, pathEnv + start, len)
-            @(newString + newStringSize) = 0
-            pathBufferOffset += newStringSize + 1
+            newStringHead := pathBufferChar + pathBufferOffset
+            newStringSize := makeStringWithZeroTerminator(newStringHead, pathEnv + start, len)
+            newString := string(newStringHead)
 
-            paths[pathCount] = string(newString)
-            pathCount += 1
-            // TODO paths.length
+            rc := readlink(newString.data, &readlinkScratchBuffer, readlinkMaxLength)
+
+            if rc > 0 && rc < readlinkMaxLength {
+                len = rc
+                if pathBufferOffset + 8 + len + 1 >= pathBufferSize {
+                    break
+                }
+                newStringSize = makeStringWithZeroTerminator(newStringHead, &readlinkScratchBuffer, len)
+                newString := string(newStringHead)
+            }
+
+            duplicateFound := false
+            for i := 0..pathCount-1 {
+                if stringsEquate(paths[i], newString) {
+                    duplicateFound = true
+                    break
+                }
+            }
+
+            if duplicateFound {
+                puts("duplicate entry: ")
+                puts(newString)
+                puts("\n")
+            } else {
+                pathBufferOffset += newStringSize
+                paths[pathCount] = newString
+                pathCount += 1
+            }
+
             if pathCount >= 100 {
                 break
             }
@@ -321,8 +351,11 @@ main :: proc () {
         }
         dirPath := paths[i]
         dir := opendir(dirPath.data)
+
         if !dir {
-            perror("could not open dir".data)
+            puts(dirPath)
+            puts(" ")
+            perror("skipping path entry".data)
             continue
         }
         for {
@@ -355,7 +388,9 @@ main :: proc () {
         closedir(dir)
     }
 
-    puts("Number of executables ")
+    puts("Unique path entries: ")
+    print_int(pathCount)
+    puts("Number of executables: ")
     print_int(exeCount)
 
     var app souvenir
@@ -729,6 +764,27 @@ makeString :: proc (dest *void, data *u8, length int) -> int {
     @lenPtr = length
     memcpy(destChar + 8, data, length)
     return 8 + length
+}
+
+makeStringWithZeroTerminator :: proc (dest *void, data *u8, length int) -> int {
+    size := makeString(dest, data, length)
+    var destCasted *u8
+    destCasted = dest
+    @(destCasted + size) = 0
+    // NOTE: even though we put a 0 at the end, the string's length doesn't include it
+    return size + 1
+}
+
+stringsEquate :: proc (a string, b string) -> bool {
+    if a.length != b.length {
+        return false
+    }
+    for i := 0..a.length-1 {
+        if @(a.data + i) != @(b.data + i) {
+            return false
+        }
+    }
+    return true
 }
 
 die :: proc (info string) {
