@@ -698,16 +698,14 @@ launchExecutable :: proc (exe *executable) {
     if totalLength > 5000 {
         die("the path for the selected executable is too long")
     }
-    var pBuffer *u8
-    pBuffer = &pathBuffer
-    fullExePath(exe, pBuffer)
+    fullExePath(exe, &pathBuffer)
 
     var argv [2]*u8
-    argv[0] = pBuffer
+    argv[0] = &pathBuffer
     argv[1] = nil
     env := environ()
-    posix_spawn(nil, pBuffer, nil, nil, &argv, env)
-    writes(pBuffer, totalLength - 1)
+    posix_spawn(nil, &pathBuffer, nil, nil, &argv, env)
+    writes(&pathBuffer, totalLength - 1)
     puts("\n")
 }
 
@@ -729,19 +727,12 @@ launchCommand :: proc (commandLine string) {
     memcpy(&nulTerminatedDashC, dashC.data, dashC.length)
     nulTerminatedDashC[dashC.length] = 0
 
-    var commandLineAsU8 *u8
-    var shellPathAsU8 *u8
-    var dashCAsU8 *u8
-    commandLineAsU8 = &nulTerminatedCommandline
-    shellPathAsU8 = &nulTerminatedShellPath
-    dashCAsU8 = &nulTerminatedDashC
-
     var argv [4]*u8
-    argv[0] = shellPathAsU8
-    argv[1] = dashCAsU8
-    argv[2] = commandLineAsU8
+    argv[0] = &nulTerminatedShellPath
+    argv[1] = &nulTerminatedDashC
+    argv[2] = &nulTerminatedCommandline
     argv[3] = nil
-    posix_spawn(nil, shellPathAsU8, nil, nil, &argv, environ())
+    posix_spawn(nil, &nulTerminatedShellPath, nil, nil, &argv, environ())
     puts("/bin/sh -c '")
     puts(commandLine)
     puts("'\n")
