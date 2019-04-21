@@ -549,8 +549,12 @@ mainLoop :: proc (app *souvenir) {
             }
             // enter
             if keyEvent.keycode == 36 {
+                if containsSpace(app.filter) {
+                    launchCommand(app.filter)
+                    return
+                }
                 if app.nFilteredExeList > 0 {
-                    launch(app.filteredExeList[app.selected])
+                    launchExecutable(app.filteredExeList[app.selected])
                     return
                 }
             }
@@ -688,7 +692,7 @@ filter :: proc (app *souvenir) {
     sortByLength(app.filteredExeList, 0, nMatches)
 }
 
-launch :: proc (exe *executable) {
+launchExecutable :: proc (exe *executable) {
     totalLength := exe.dirPath.length + 1 + exe.fileName.length + 1
     var pathBuffer [5000]u8
     if totalLength > 5000 {
@@ -707,6 +711,42 @@ launch :: proc (exe *executable) {
     puts("\n")
 }
 
+launchCommand :: proc (commandLine string) {
+    var nulTerminatedCommandline [5000]u8
+    if commandLine.length + 1 > 5000 {
+        die("command line too long")
+    }
+    memcpy(&nulTerminatedCommandline, commandLine.data, commandLine.length)
+    nulTerminatedCommandline[commandLine.length] = 0
+
+    binSh := "/bin/sh"
+    var nulTerminatedShellPath [8]u8
+    memcpy(&nulTerminatedShellPath, binSh.data, binSh.length)
+    nulTerminatedShellPath[binSh.length] = 0
+
+    dashC := "-c"
+    var nulTerminatedDashC [3]u8
+    memcpy(&nulTerminatedDashC, dashC.data, dashC.length)
+    nulTerminatedDashC[dashC.length] = 0
+
+    var commandLineAsU8 *u8
+    var shellPathAsU8 *u8
+    var dashCAsU8 *u8
+    commandLineAsU8 = &nulTerminatedCommandline
+    shellPathAsU8 = &nulTerminatedShellPath
+    dashCAsU8 = &nulTerminatedDashC
+
+    var argv [4]*u8
+    argv[0] = shellPathAsU8
+    argv[1] = dashCAsU8
+    argv[2] = commandLineAsU8
+    argv[3] = nil
+    posix_spawn(nil, shellPathAsU8, nil, nil, &argv, environ())
+    puts("/bin/sh -c '")
+    puts(commandLine)
+    puts("'\n")
+}
+
 fullExePath :: proc(exe *executable, buffer *[5000]u8) {
     // 47 is '/'
     memcpy(buffer, exe.dirPath.data, exe.dirPath.length)
@@ -721,40 +761,57 @@ stringWidth :: proc (app *souvenir, str string) -> int {
     return metrics.width
 }
 
-draw :: proc (app *souvenir) {
-    pTextColor := &app.textColor
-
-    XClearWindow(app.display, app.window)
-    x := app.leftPadding
-
-    filterWidth := stringWidth(app, app.filter)
-
-    truncationThreshold := app.filterInputWidth - app.widthOfThreeDots - 10
-    filterLength := app.filter.length
-    var filterMetrics XGlyphInfo
-    for filterLength > 0 && (filterWidth > truncationThreshold) {
-        filterLength -= 1
-        XftTextExtentsUtf8(app.display, app.font, app.filter.data, filterLength, &filterMetrics)
-        filterWidth = filterMetrics.width
-    }
-
-    XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, app.font.ascent, app.filter.data, filterLength)
-    if filterLength < app.filter.length {
-        XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x + filterWidth, app.font.ascent, "...".data, "...".length)
-    }
-    x += app.filterInputWidth
-
-    for i := 0..app.nFilteredExeList-1 {
-        exe := app.filteredExeList[i]
-
-        itemWidth := stringWidth(app, exe.fileName)
-
-        if i == app.selected {
-            XftDrawRect(app.xftWindowDraw, &app.selectionColor, x-5, 0, itemWidth+10, app.font.height)
+containsSpace :: proc (str string) -> bool {
+    for i := 0..str.length-1 {
+        if @(str.data + i) == 32 {
+            return true
         }
-        XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, app.font.ascent, exe.fileName.data, exe.fileName.length)
+    }
+    return false
+}
 
-        x += itemWidth + app.interItemPadding
+draw :: proc (app *souvenir) {
+    XClearWindow(app.display, app.window)
+
+    pTextColor := &app.textColor
+    filterContainsSpace := containsSpace(app.filter)
+    if filterContainsSpace {
+        var filterMetrics XGlyphInfo
+        XftTextExtentsUtf8(app.display, app.font, app.filter.data, app.filter.length, &filterMetrics)
+
+        XftDrawRect(app.xftWindowDraw, &app.selectionColor, 0, 0, filterMetrics.width+ app.leftPadding+5, app.font.height)
+
+        XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, app.leftPadding, app.font.ascent, app.filter.data, app.filter.length)
+    } else {
+        x := app.leftPadding
+        filterWidth := stringWidth(app, app.filter)
+        truncationThreshold := app.filterInputWidth - app.widthOfThreeDots - 10
+        filterLength := app.filter.length
+        var filterMetrics XGlyphInfo
+        for filterLength > 0 && (filterWidth > truncationThreshold) {
+            filterLength -= 1
+            XftTextExtentsUtf8(app.display, app.font, app.filter.data, filterLength, &filterMetrics)
+            filterWidth = filterMetrics.width
+        }
+
+        XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, app.font.ascent, app.filter.data, filterLength)
+        if filterLength < app.filter.length {
+            XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x + filterWidth, app.font.ascent, "...".data, "...".length)
+        }
+        x += app.filterInputWidth
+
+        for i := 0..app.nFilteredExeList-1 {
+            exe := app.filteredExeList[i]
+
+            itemWidth := stringWidth(app, exe.fileName)
+
+            if i == app.selected {
+                XftDrawRect(app.xftWindowDraw, &app.selectionColor, x-5, 0, itemWidth+10, app.font.height)
+            }
+            XftDrawStringUtf8(app.xftWindowDraw, pTextColor, app.font, x, app.font.ascent, exe.fileName.data, exe.fileName.length)
+
+            x += itemWidth + app.interItemPadding
+        }
     }
 }
 
